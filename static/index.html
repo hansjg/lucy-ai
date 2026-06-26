@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LUCY — AI COMPANION</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div id="bg-overlay"></div>
+
+<div id="app">
+
+  <!-- ── Character panel ── -->
+  <div id="character-panel">
+    <canvas id="hack-canvas"></canvas>
+
+    <div class="hud-row top-hud">
+      <span class="hud-tag">NC NC4884 0252</span>
+      <span class="hud-tag accent">KIROSHI ▮▮▮</span>
+    </div>
+
+    <div id="character-name">LUCY</div>
+    <div id="character-sub">AI COMPANION — MEMORY ON</div>
+
+    <div id="live2d-wrapper">
+      <canvas id="live2d-canvas"></canvas>
+      <div id="lucy-wrap">
+        <canvas id="lucy-canvas"></canvas>
+        <div id="mouth-open-anim"></div>
+      </div>
+      <div class="frame-corner tl"></div>
+      <div class="frame-corner tr"></div>
+      <div class="frame-corner bl"></div>
+      <div class="frame-corner br"></div>
+      <div class="scanlines"></div>
+    </div>
+
+    <div id="status-row">
+      <div id="status-dot"></div>
+      <span id="status-text">READY_</span>
+    </div>
+
+    <div id="controls">
+      <button id="ptt-btn" title="Hold SPACE or hold this button">
+        <span id="ptt-icon">🎤</span>
+        <span id="ptt-label">HOLD TO SPEAK</span>
+      </button>
+      <button id="cam-btn" title="Toggle camera">📷</button>
+    </div>
+
+    <div id="camera-wrap">
+      <video id="camera-feed" autoplay muted playsinline title="Click to snap"></video>
+      <div id="snap-overlay">
+        <img id="snap-img" src="" alt="" title="Click to re-snap">
+      </div>
+    </div>
+
+    <div class="hud-row bottom-hud">
+      <span class="hud-tag dim">MODEL: LUCY-77B</span>
+      <span class="hud-tag dim">VOICE: NEURAL-SYNTH V2.1</span>
+    </div>
+  </div>
+
+  <!-- ── Chat panel ── -->
+  <div id="chat-panel">
+    <div id="chat-header">
+      <div>
+        <div id="chat-title">LUCY</div>
+        <div id="chat-subtitle">AI COMPANION · MEMORY ON</div>
+      </div>
+      <div id="conn-status">
+        <div id="header-dot"></div>
+        <span class="conn-label">CONNECTION STABLE<br><span class="dim">DATA LINE SECURE</span></span>
+      </div>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="live-transcript" hidden>
+      <span id="transcript-text"></span>
+    </div>
+
+    <div id="snap-attached" hidden>
+      <img id="snap-img" src="" alt="">
+      <span id="snap-clear-btn">✕</span>
+    </div>
+    <div id="text-input-row">
+      <input id="text-input" type="text" placeholder="TYPE YOUR MESSAGE..." autocomplete="off" spellcheck="false">
+      <button id="send-btn">SEND</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
