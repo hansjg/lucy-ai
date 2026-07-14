@@ -1,0 +1,9 @@
+{
+  "capability": "llm.local",
+  "provider": "ollama",
+  "actions": ["chat"],
+  "requires": {"service": "ollama"},
+  "permissions": [],
+  "version": "0.1.0",
+  "meta": {"model": "qwen2.5vl:3b", "vision": true}
+}

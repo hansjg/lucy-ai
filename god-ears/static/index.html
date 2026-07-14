@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GOD EARS — PowerShell</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="window">
+
+  <div id="titlebar">
+    <div class="title"><span class="ps-icon">&#x26A1;</span> GOD EARS &mdash; Windows PowerShell <span class="subtle">(prettier)</span></div>
+    <div class="winbtns"><span>&#x2500;</span><span>&#x25A1;</span><span class="x">&#x2715;</span></div>
+  </div>
+
+  <div id="statusbar">
+    <span class="pill" id="pill-state">STARTING</span>
+    <span class="pill dim" id="pill-stt">whisper: loading&hellip;</span>
+    <span class="pill dim" id="pill-llm">llm: &ndash;</span>
+    <span class="pill dim" id="pill-today">0 words today</span>
+    <span class="pill dim" id="pill-sync">sync: off</span>
+    <span class="spacer"></span>
+    <button class="ctl run"  id="btn-run"  title="resume listening">&#x25B6; Run</button>
+    <button class="ctl pause" id="btn-pause" title="pause listening">&#x23F8; Pause</button>
+    <button class="ctl term" id="btn-term" title="shut God Ears down">&#x23F9; Terminate</button>
+  </div>
+
+  <div id="term"></div>
+
+  <div id="promptline">
+    <span id="ps1">PS God-Ears&gt;</span>
+    <input id="cmd" autocomplete="off" spellcheck="false"
+           placeholder="ask what I heard today&hellip;  (/help for commands)" autofocus>
+  </div>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

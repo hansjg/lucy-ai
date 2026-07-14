@@ -1,0 +1,8 @@
+{
+  "capability": "speech.tts",
+  "provider": "edge-tts",
+  "actions": ["synthesize"],
+  "requires": {"network": "online"},
+  "permissions": [],
+  "version": "0.1.0"
+}

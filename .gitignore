@@ -38,6 +38,16 @@ Start Menu/
 Templates/
 Videos/
 
+# Lucy runtime / secrets — node token, voiceprints, settings, db: NEVER commit
+data/
+god-ears/data/
+
+# Separate projects / heavy artifacts
+lucy-web/
+ai-chatbot/
+static_cp2077_backup/
+vosk-model/
+
 # Lucy runtime / temp
 ai_memory/
 ai_chatbot/
@@ -59,3 +69,6 @@ static/app.js.bak*
 static/index.html.bak*
 static/style.css.bak*
 requirements.txt
+
+# node-local config carries the auth token
+lucy/node/config.json

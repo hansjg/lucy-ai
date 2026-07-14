@@ -1,0 +1,8 @@
+{
+  "capability": "speech.speaker",
+  "provider": "wespeaker-campp",
+  "actions": ["identify", "enroll", "list", "forget"],
+  "requires": {"model": "speaker_campp.onnx"},
+  "permissions": ["voice-biometrics"],
+  "version": "0.1.0"
+}
