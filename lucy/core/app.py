@@ -44,14 +44,18 @@ registry.on("wake", _broadcast_wake)
 registry.on("task_progress", _broadcast_progress)
 
 
-async def say(ws, text):
+async def say(ws, text, expect_answer=False):
     """Send a Lucy reply that isn't LLM-generated — used for deterministic
     confirmations and wizard prompts where correctness matters more than
     natural phrasing (a small local model WILL invent details if asked to
-    narrate something this factual)."""
+    narrate something this factual).
+
+    expect_answer marks the reply as a QUESTION. The browser reopens the mic
+    for it when the user came in by voice, so answering a follow-up doesn't
+    need another "hey lucy". Typed users are left alone."""
     await ws.send_json({"type": "reply_start"})
     await ws.send_json({"type": "token", "text": text})
-    await ws.send_json({"type": "reply_end"})
+    await ws.send_json({"type": "reply_end", "expect_answer": expect_answer})
     await ws.send_json({"type": "status", "state": "idle"})
 
 
@@ -74,7 +78,11 @@ app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static
 
 @app.get("/")
 async def index():
-    return FileResponse(str(config.STATIC_DIR / "index.html"))
+    # index.html carries the ?v= cache-busters for app.js/style.css — so if
+    # the browser caches THIS, every future UI update is invisible and no
+    # amount of bumping the version helps. It must always be revalidated.
+    return FileResponse(str(config.STATIC_DIR / "index.html"),
+                        headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
 # ─── Observability API (task log panel) ───────────────────
@@ -392,7 +400,8 @@ async def handle_connect_request(ws, text):
 
     if not target:
         opts = ", ".join(f"{i+1}. {d['label']}" for i, d in enumerate(devices))
-        await say(ws, f"Which device do you mean? {opts} — say the number or the name.")
+        await say(ws, f"Which device do you mean? {opts} — say the number or the name.",
+                  expect_answer=True)
         return {"stage": "await_device", "options": [d["name"] for d in devices]}
 
     await wake_device(ws, target)
@@ -512,6 +521,54 @@ def pick_candidate(text, candidates):
     return None
 
 
+# "two of them", "both", "all of it", "the first three"
+COUNT_WORDS = {"both": 2, "two": 2, "three": 3, "four": 4, "five": 5,
+               "couple": 2, "pair": 2}
+
+
+def wanted_count(text):
+    """How many files the user asked for, if they said. None = unspecified."""
+    t = text.lower()
+    if re.search(r"\b(all|everything|every one|the lot)\b", t):
+        return "all"
+    for word, n in COUNT_WORDS.items():
+        if re.search(rf"\b{word}\b", t):
+            return n
+    m = re.search(r"\b(\d+)\s+(?:of\s+)?(?:the\s+)?(?:files?|of\s+them|of\s+it)", t)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def pick_candidates(text, candidates):
+    """Resolve a possibly-multi answer: 'all', 'both', '1 and 3', 'the pdf'."""
+    t = text.strip().lower()
+    if re.search(r"\b(all|both|everything|every one)\b", t):
+        n = 2 if "both" in t else len(candidates)
+        return candidates[:n]
+    picked = []
+    for num in re.findall(r"\b(\d+)\b", t):        # "1 and 3", "2, 4"
+        i = int(num) - 1
+        if 0 <= i < len(candidates) and candidates[i] not in picked:
+            picked.append(candidates[i])
+    if picked:
+        return picked
+    for c in candidates:                            # by name
+        stem = c["name"].lower().rsplit(".", 1)[0]
+        if c["name"].lower() in t or (len(stem) > 4 and stem in t):
+            if c not in picked:
+                picked.append(c)
+    if picked:
+        return picked
+    one = pick_candidate(text, candidates)
+    return [one] if one else []
+
+
+def file_list_lines(files):
+    return "\n".join(f"{i+1}. {f['name']} ({f['bytes']/1e6:.1f} MB)"
+                     for i, f in enumerate(files))
+
+
 def parse_dest_choice(text):
     t = text.strip().lower()
     for alias in ("desktop", "downloads", "documents", "pictures", "shared"):
@@ -529,66 +586,134 @@ async def live_node_names():
     return [n["name"] for n in node_manager.snapshot() if n["alive"]]
 
 
-async def execute_share(ws, src_path: Path, display_name, node_name, dest_alias):
-    """Copy the chosen file into the core shared folder (if it isn't already
-    there) and dispatch the delivery, reporting a deterministic confirmation."""
+async def execute_share(ws, src_paths, display_name, node_name, dest_alias):
+    """Copy the chosen file(s) into the core shared folder (if not already
+    there) and dispatch each delivery, reporting a deterministic confirmation.
+    Every file is reported by name — a summary like "sent 2 files" is exactly
+    where a vague answer could hide a delivery that never happened."""
+    if isinstance(src_paths, Path):
+        src_paths = [src_paths]
     await ws.send_json({"type": "status", "state": "thinking"})
-    try:
-        config.SHARED_DIR.mkdir(parents=True, exist_ok=True)
-        target = config.SHARED_DIR / src_path.name
-        if src_path.resolve() != target.resolve():
-            shutil.copy2(src_path, target)
-    except Exception as e:
-        await say(ws, f"Couldn't read '{display_name}' — {e}")
-        return
 
-    res = await scheduler.execute_task(registry, "files.transfer", "deliver",
-                                       {"name": target.name, "dest": dest_alias}, node_name)
-    if res["ok"]:
-        data = res["data"]
-        await ws.send_json({"type": "task_note", "task_id": res.get("task_id"),
-                            "text": f"files.transfer.deliver → {res['node']} · {res['ms']}ms"})
-        await say(ws, deliver_confirmation(data.get("saved", target.name), res["node"],
-                                           data.get("folder", "the shared folder"),
-                                           data.get("bytes", 0)))
+    sent, failed = [], []
+    for src_path in src_paths:
+        try:
+            config.SHARED_DIR.mkdir(parents=True, exist_ok=True)
+            target = config.SHARED_DIR / src_path.name
+            if src_path.resolve() != target.resolve():
+                shutil.copy2(src_path, target)
+        except Exception as e:
+            failed.append((src_path.name, str(e)))
+            continue
+
+        res = await scheduler.execute_task(registry, "files.transfer", "deliver",
+                                           {"name": target.name, "dest": dest_alias}, node_name)
+        if res["ok"]:
+            data = res["data"]
+            await ws.send_json({"type": "task_note", "task_id": res.get("task_id"),
+                                "text": f"files.transfer.deliver → {res['node']} · {res['ms']}ms"})
+            sent.append((data.get("saved", target.name), data.get("bytes", 0),
+                         res["node"], data.get("folder", "the shared folder")))
+        else:
+            await ws.send_json({"type": "task_note", "task_id": res.get("task_id"),
+                                "text": f"files.transfer.deliver failed · {res['error']}"})
+            failed.append((src_path.name, res["error"]))
+
+    if sent and not failed:
+        if len(sent) == 1:
+            name, size, node, folder = sent[0]
+            await say(ws, deliver_confirmation(name, node, folder, size))
+        else:
+            names = ", ".join(f"'{n}'" for n, _, _, _ in sent)
+            total = sum(b for _, b, _, _ in sent) / 1e6
+            node, folder = sent[0][2], sent[0][3]
+            await say(ws, f"Done — {len(sent)} files ({names}, {total:.1f} MB total) "
+                          f"are now on {device_label(node)}, saved to {folder}")
+    elif sent and failed:
+        ok = ", ".join(f"'{n}'" for n, _, _, _ in sent)
+        bad = "; ".join(f"'{n}' ({e})" for n, e in failed)
+        await say(ws, f"Partly done — {ok} arrived on {device_label(node_name)}, "
+                      f"but {bad} failed.")
     else:
-        await ws.send_json({"type": "task_note", "task_id": res.get("task_id"),
-                            "text": f"files.transfer.deliver failed · {res['error']}"})
-        await say(ws, f"Sending '{display_name}' to {device_label(node_name)} failed: {res['error']}")
+        bad = "; ".join(f"'{n}' ({e})" for n, e in failed)
+        await say(ws, f"Sending to {device_label(node_name)} failed: {bad}")
 
 
-async def start_share_wizard(ws, context_file):
+async def start_share_wizard(ws, context_file, text=""):
     live = await live_node_names()
+    want = wanted_count(text)          # "two of the files" / "all" / None
+    have = recent_files(config.SHARED_DIR, 20)
 
-    if context_file:
+    # A file was just dropped AND the user asked for one file (or didn't say
+    # a number) — the dropped one is unambiguous, use it.
+    if context_file and not want:
         src = config.SHARED_DIR / context_file
         if len(live) == 1:
-            await execute_share(ws, src, context_file, live[0], "shared")
+            await execute_share(ws, [src], context_file, live[0], "shared")
             return None
         if not live:
             await say(ws, f"Got '{context_file}' ready, but no devices are online right now.")
             return None
         opts = ", ".join(f"{i+1}. {device_label(n)}" for i, n in enumerate(live))
         await say(ws, f"Got it, '{context_file}' is ready — which device should I send it to? "
-                      f"{opts} — say the number or the name.")
-        return {"stage": "await_node", "file": src, "display_name": context_file, "options": live}
+                      f"{opts} — say the number or the name.", expect_answer=True)
+        return {"stage": "await_node", "files": [src], "display_name": context_file,
+                "options": live}
 
-    # No specific file named — never assume the leftover in the shared folder.
-    # Ask whether the user is about to upload one, or meant a recent file.
-    recent = recent_files(config.SHARED_DIR, 1)
-    if recent:
-        rf = recent[0]
+    if not have:
+        await say(ws, "I don't have any files yet — drop or paste them onto me first, "
+                      "then say 'send this'. Or tell me which folder they're in.",
+                  expect_answer=True)
+        return {"stage": "await_folder"}
+
+    # She knows exactly what she's holding — say so instead of guessing at the
+    # newest one, which is how "send two of them" used to become "send that one".
+    count = f"I've got {len(have)} file{'s' if len(have) != 1 else ''}"
+
+    if want == "all":
+        return await _confirm_files_then_node(ws, have, live)
+    if isinstance(want, int):
+        if want <= len(have):
+            await say(ws, f"{count}. Which {want}? \n{file_list_lines(have)}\n"
+                          f"Say the numbers — like '1 and 2'.", expect_answer=True)
+            return {"stage": "await_file", "candidates": have}
+        await say(ws, f"{count}, so I can't send {want}. Here's everything I have:\n"
+                      f"{file_list_lines(have)}\nWhich ones?", expect_answer=True)
+        return {"stage": "await_file", "candidates": have}
+
+    if len(have) == 1:
+        rf = have[0]
         await say(ws, f"Sure thing! Are you going to upload a new file, or did you mean "
-                      f"'{rf['name']}' from before? Say 'upload' for a new one, or 'that one'.")
+                      f"'{rf['name']}' from before? Say 'upload' for a new one, "
+                      f"or 'that one'.", expect_answer=True)
         return {"stage": "await_source_choice", "recent": rf}
-    await say(ws, "Sure — drop or paste the file onto me first, then say 'send this'. "
-                  "Or tell me which folder it's in.")
-    return {"stage": "await_folder"}
+
+    await say(ws, f"{count}. Which should I send?\n{file_list_lines(have)}\n"
+                  f"Say the numbers, a name, or 'all'.", expect_answer=True)
+    return {"stage": "await_file", "candidates": have}
+
+
+async def _confirm_files_then_node(ws, files, live):
+    """Files are settled — route to the device question (or just send)."""
+    paths = [Path(f["path"]) for f in files]
+    label = (files[0]["name"] if len(files) == 1
+             else f"{len(files)} files")
+    if not live:
+        await say(ws, f"Got {label} ready, but no devices are online right now.")
+        return None
+    if len(live) == 1:
+        return await confirm_and_maybe_ask_dest(
+            ws, {"files": paths, "display_name": label}, live[0])
+    opts = ", ".join(f"{i+1}. {device_label(n)}" for i, n in enumerate(live))
+    await say(ws, f"Got it — {label}. Which device? {opts} — say the number or the name.",
+              expect_answer=True)
+    return {"stage": "await_node", "files": paths, "display_name": label, "options": live}
 
 
 async def confirm_and_maybe_ask_dest(ws, state, node_name):
     await say(ws, f"Where should I put '{state['display_name']}' on {device_label(node_name)}? "
-                  f"(Desktop, Downloads, Documents, Pictures, or say 'default')")
+                  f"(Desktop, Downloads, Documents, Pictures, or say 'default')",
+              expect_answer=True)
     return {**state, "stage": "await_dest", "node": node_name}
 
 
@@ -615,57 +740,40 @@ async def advance_share_wizard(ws, state, text):
         if folder and folder.resolve() != config.SHARED_DIR.resolve():
             files = recent_files(folder)
             if not files:
-                await say(ws, f"That folder's empty — try another, or say 'that one' for '{rf['name']}'.")
+                await say(ws, f"That folder's empty — try another, or say 'that one' for '{rf['name']}'.",
+                          expect_answer=True)
                 return state
-            lines = "\n".join(f"{i+1}. {f['name']} ({f['bytes']/1e6:.1f} MB)" for i, f in enumerate(files))
-            await say(ws, f"Here are the 3 most recent files there:\n{lines}\nWhich one — say the number or the name?")
+            await say(ws, f"Here are the 3 most recent files there:\n{file_list_lines(files)}\n"
+                          f"Which one — say the number or the name?", expect_answer=True)
             return {"stage": "await_file", "candidates": files}
         if (any(w in t for w in ("that", "yes", "yeah", "yep", "previous", "before", "same", "it"))
                 or rf["name"].lower() in t or t == "1"):
-            src = Path(rf["path"])
-            live = await live_node_names()
-            if not live:
-                await say(ws, f"'{rf['name']}' is ready but no devices are online right now.")
-                return None
-            if len(live) == 1:
-                return await confirm_and_maybe_ask_dest(ws, {"file": src, "display_name": rf["name"]}, live[0])
-            opts = ", ".join(f"{i+1}. {device_label(n)}" for i, n in enumerate(live))
-            await say(ws, f"Got it — '{rf['name']}'. Which device? {opts} — number or name.")
-            return {"stage": "await_node", "file": src, "display_name": rf["name"], "options": live}
-        await say(ws, f"Say 'upload' for a new file, or 'that one' to send '{rf['name']}'.")
+            return await _confirm_files_then_node(ws, [rf], await live_node_names())
+        await say(ws, f"Say 'upload' for a new file, or 'that one' to send '{rf['name']}'.",
+                  expect_answer=True)
         return state
 
     if stage == "await_folder":
         folder = resolve_core_folder(text)
         if not folder:
             await say(ws, "I couldn't find that folder — try Desktop, Downloads, Documents, "
-                          "Pictures, or a full path.")
+                          "Pictures, or a full path.", expect_answer=True)
             return state
         files = recent_files(folder)
         if not files:
-            await say(ws, "That folder's empty — try another one?")
+            await say(ws, "That folder's empty — try another one?", expect_answer=True)
             return {"stage": "await_folder"}
-        lines = "\n".join(f"{i+1}. {f['name']} ({f['bytes']/1e6:.1f} MB)" for i, f in enumerate(files))
-        await say(ws, f"Here are the 3 most recent files there:\n{lines}\n"
-                      f"Which one — say the number or the name?")
+        await say(ws, f"Here are the 3 most recent files there:\n{file_list_lines(files)}\n"
+                      f"Which one — say the number or the name?", expect_answer=True)
         return {"stage": "await_file", "candidates": files}
 
     if stage == "await_file":
-        choice = pick_candidate(text, state["candidates"])
-        if not choice:
-            await say(ws, "Didn't catch which one — say 1, 2, 3, or the filename.")
+        chosen = pick_candidates(text, state["candidates"])
+        if not chosen:
+            await say(ws, "Didn't catch which ones — say the numbers (like '1 and 2'), "
+                          "a filename, or 'all'.", expect_answer=True)
             return state
-        live = await live_node_names()
-        if not live:
-            await say(ws, f"Got '{choice['name']}' picked out, but no devices are online right now.")
-            return None
-        if len(live) == 1:
-            return await confirm_and_maybe_ask_dest(
-                ws, {"file": Path(choice["path"]), "display_name": choice["name"]}, live[0])
-        opts = ", ".join(f"{i+1}. {device_label(n)}" for i, n in enumerate(live))
-        await say(ws, f"Got it — '{choice['name']}'. Which device? {opts} — say the number or the name.")
-        return {"stage": "await_node", "file": Path(choice["path"]),
-                "display_name": choice["name"], "options": live}
+        return await _confirm_files_then_node(ws, chosen, await live_node_names())
 
     if stage == "await_node":
         options = state.get("options") or await live_node_names()
@@ -684,7 +792,7 @@ async def advance_share_wizard(ws, state, text):
 
     if stage == "await_dest":
         dest = parse_dest_choice(text)
-        await execute_share(ws, state["file"], state["display_name"], state["node"], dest)
+        await execute_share(ws, state["files"], state["display_name"], state["node"], dest)
         return None
 
     return None
@@ -984,7 +1092,7 @@ async def ws_endpoint(ws: WebSocket):
             if not image_b64 and not continuing:
                 if wants_this_file:
                     # a file was just dropped/pasted and the user says "send this"
-                    pending_share = await start_share_wizard(ws, context_file)
+                    pending_share = await start_share_wizard(ws, context_file, text)
                     return
                 if looks_like_rename_intent(text):
                     # never let the LLM claim "I've renamed it" — do it for real
@@ -998,7 +1106,7 @@ async def ws_endpoint(ws: WebSocket):
                 if looks_like_share_intent(text) and not names_a_file(text):
                     # share intent but no explicit filename — ask what to send
                     # rather than grabbing whatever's sitting in the shared folder
-                    pending_share = await start_share_wizard(ws, None)
+                    pending_share = await start_share_wizard(ws, None, text)
                     return
 
             # Phase 2: planner may route this to a device task first

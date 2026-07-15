@@ -10,6 +10,15 @@ let cameraStream = null, cameraActive = false;
 let heldSnapshot = null;
 let detectActive = false, lastDetections = [];
 
+// ─── Conversation modality ───────────────────────────────
+// Answering Lucy's follow-up shouldn't need another "hey lucy" — but only
+// when you're actually talking. If you typed, opening the mic would be rude
+// (and would record the room while you're reading her question).
+let lastInputWasVoice = false;   // how the last message reached her
+let expectingAnswer = false;     // her last reply was a question
+let autoListenTimer = null;      // bail-out when you say nothing
+const AUTO_LISTEN_SILENCE_MS = 7000;
+
 // ─── DOM refs ────────────────────────────────────────────
 const statusDot  = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
@@ -153,6 +162,13 @@ function connectWS() {
     }
     else if (msg.type === 'reply_end') {
       finalizeStreamBubble();
+      // Questions get answered by mic if the user is speaking; drainQueue
+      // acts on this once she's actually finished saying it.
+      expectingAnswer = !!msg.expect_answer;
+      if (expectingAnswer && lastInputWasVoice && !audioPlaying && !isRecording) {
+        expectingAnswer = false;
+        startRecording({ auto: true });   // no TTS queued (muted) — listen now
+      }
     }
     else if (msg.type === 'audio_chunk') {
       enqueueAudio(msg.data);
@@ -198,13 +214,15 @@ async function initMic() {
   }
 }
 
-async function startRecording() {
+async function startRecording({ auto = false } = {}) {
   if (isRecording) return;
-  stopSpeaking(true);   // if Lucy's talking (or thinking), you take priority
+  // An auto-listen must never interrupt her — it only ever runs once she has
+  // finished the question. A human press still takes priority over anything.
+  if (!auto) stopSpeaking(true);
   if (!micReady) {
     const ok = await initMic();
     if (!ok) {
-      quip("i can't reach the mic — click anywhere once, then try again!", 3200);
+      if (!auto) quip("i can't reach the mic — click anywhere once, then try again!", 3200);
       return;
     }
   }
@@ -239,6 +257,20 @@ async function startRecording() {
     let speechStarted = false;
     let speechTimer = Date.now();
 
+    // The VAD below only closes a recording once speech has STARTED. On an
+    // auto-listen nobody may answer at all, so without this the mic would
+    // sit open on the room forever — exactly what "if no answer, off the
+    // mic" asks us not to do.
+    if (auto) {
+      clearTimeout(autoListenTimer);
+      autoListenTimer = setTimeout(() => {
+        if (isRecording && !speechStarted) {
+          chunks = [];            // nothing said — send nothing
+          stopRecording();
+        }
+      }, AUTO_LISTEN_SILENCE_MS);
+    }
+
     workletNode.port.onmessage = ({ data }) => {
       if (data && typeof data === 'object' && 'rms' in data) {
         const silent = data.rms < SILENCE_THRESHOLD;
@@ -264,6 +296,7 @@ async function startRecording() {
 async function stopRecording() {
   if (!isRecording) return;
   isRecording = false;
+  clearTimeout(autoListenTimer);
   pttBtn.classList.remove('active');
   textInput.placeholder = 'say something to lucy…';
 
@@ -284,6 +317,7 @@ async function stopRecording() {
     imageB64 = captureFrame();
   }
 
+  lastInputWasVoice = true;   // she may reopen the mic for her follow-up
   const payload = { type: 'audio', data: b64 };
   if (imageB64) payload.image = imageB64;
   ws?.send(JSON.stringify(attachContextFile(payload)));
@@ -378,6 +412,15 @@ async function drainQueue() {
   }
   audioPlaying = false;
   if (speechAborted) { setState('idle'); return; }
+
+  // She just finished asking something and you're in a spoken conversation:
+  // open the mic yourself rather than making them say "hey lucy" again.
+  if (expectingAnswer && lastInputWasVoice && !isRecording) {
+    expectingAnswer = false;
+    setPose('base');
+    startRecording({ auto: true });
+    return;
+  }
   // occasional thumbs-up flourish when she finishes talking
   if (Math.random() < 0.25) {
     setPose('thumbs');
@@ -692,6 +735,12 @@ function sendTextMessage() {
   const text = textInput.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   stopSpeaking();   // a new question supersedes whatever she's still saying
+  // Typing means you're at the keyboard — she must not open the mic on her
+  // follow-up. Any pending auto-listen from an earlier spoken turn is off.
+  lastInputWasVoice = false;
+  expectingAnswer = false;
+  clearTimeout(autoListenTimer);
+  if (isRecording) stopRecording();
   textInput.value = '';
   addMessage('user', text);
   showThinkingDots();
