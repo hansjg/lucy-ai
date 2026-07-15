@@ -67,22 +67,46 @@ class Plugin(LucyPlugin):
             emb = self._embed(params["wav_bytes"])
             if emb is None:
                 return {"speaker": None, "reason": "too short"}
-            best, best_sim = None, -1.0
-            for p in self.profiles:
-                sim = _cos(emb, p["embedding"])
-                if sim > best_sim:
-                    best, best_sim = p, sim
-            if best and best_sim >= config.SPEAKER_THRESHOLD:
-                # EMA update: profiles track the voice as it's heard more
+
+            ranked = sorted(((_cos(emb, p["embedding"]), p) for p in self.profiles),
+                            key=lambda x: -x[0])
+            if not ranked:
+                return {"speaker": None, "score": 0.0}
+            best_sim, best = ranked[0]
+            runner_up = ranked[1][0] if len(ranked) > 1 else -1.0
+            margin = (best_sim - runner_up) if len(ranked) > 1 else 1.0
+
+            # Sharing Lucy raises the bar. With one enrolled voice a false
+            # accept only means she uses the wrong name; with several it also
+            # decides whose files she reaches for — and relatives score close.
+            threshold = (config.SPEAKER_THRESHOLD_MULTI if len(self.profiles) > 1
+                         else config.SPEAKER_THRESHOLD)
+
+            if best_sim < threshold:
+                return {"speaker": None, "closest": best["name"],
+                        "score": round(best_sim, 3), "reason": "below threshold"}
+
+            # Two profiles this close cannot be told apart honestly. Naming one
+            # anyway is how the wrong person gets addressed — and, in profiles
+            # mode, pointed at someone else's space.
+            if len(ranked) > 1 and margin < config.SPEAKER_UPDATE_MARGIN:
+                return {"speaker": None, "closest": best["name"],
+                        "score": round(best_sim, 3), "margin": round(margin, 3),
+                        "reason": f"too close to {ranked[1][1]['name']}"}
+
+            # Learn ONLY from a clearly confident, unambiguous match. The EMA
+            # used to run on every accept, so a single borderline hit would drag
+            # the profile toward the impostor and make the next one easier.
+            if best_sim >= config.SPEAKER_UPDATE_MIN and margin >= config.SPEAKER_UPDATE_MARGIN:
                 old = np.asarray(best["embedding"])
                 new = 0.85 * old + 0.15 * np.asarray(emb)
                 best["embedding"] = list(new / (np.linalg.norm(new) + 1e-9) * np.linalg.norm(old))
                 best["samples"] = best.get("samples", 1) + 1
                 best["updated"] = datetime.datetime.now().isoformat(timespec="seconds")
                 self._save_profiles()
-                return {"speaker": best["name"], "score": round(best_sim, 3)}
-            return {"speaker": None, "closest": best["name"] if best else None,
-                    "score": round(best_sim, 3)}
+
+            return {"speaker": best["name"], "score": round(best_sim, 3),
+                    "margin": round(margin, 3)}
 
         if action == "enroll":
             name = str(params["name"]).strip()[:24]
@@ -90,6 +114,20 @@ class Plugin(LucyPlugin):
             if emb is None:
                 return {"ok": False, "error": "utterance too short to fingerprint"}
             existing = next((p for p in self.profiles if p["name"].lower() == name.lower()), None)
+
+            # Enrolling a voice that already scores like SOMEONE ELSE is the
+            # failure mode nobody notices: from then on Lucy silently confuses
+            # two people. Say it out loud at enrolment instead of pretending.
+            if not existing:
+                clash = next(((p["name"], _cos(emb, p["embedding"]))
+                              for p in self.profiles
+                              if _cos(emb, p["embedding"]) >= config.SPEAKER_COLLISION), None)
+                if clash and not params.get("force"):
+                    return {"ok": False, "collision": clash[0],
+                            "score": round(clash[1], 3),
+                            "error": f"this voice sounds a lot like {clash[0]} "
+                                     f"({clash[1]:.2f}) — I couldn't reliably tell "
+                                     f"you apart"}
             now = datetime.datetime.now().isoformat(timespec="seconds")
             if existing:
                 old = np.asarray(existing["embedding"])

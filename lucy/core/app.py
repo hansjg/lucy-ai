@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import uvicorn
 
-from . import config, memory, db, scheduler, planner, settings
+from . import config, memory, db, scheduler, planner, settings, people
 from .registry import registry
 from .nodes import (router as node_router, node_manager, print_pairing_line,
                     register_mdns, unregister_mdns, safe_name,
@@ -147,15 +147,35 @@ def _device_inventory():
     return devices
 
 
+def _people_inventory():
+    """Who Lucy knows, with the pre-approvals each has granted. The topic
+    itself is never included here — the UI asks for it separately."""
+    return [{"name": p["name"], "space": p["space"],
+             "auto_allow": p.get("auto_allow", [])} for p in people.load()]
+
+
 @app.get("/api/settings")
 async def api_settings_get():
-    return {"settings": settings.load(), "devices": _device_inventory()}
+    return {"settings": settings.load(), "devices": _device_inventory(),
+            "people": _people_inventory()}
 
 
 @app.post("/api/settings")
 async def api_settings_post(request: Request):
-    return {"settings": settings.save(await request.json()),
-            "devices": _device_inventory()}
+    body = await request.json()
+    # "make me a topic" — the UI must never invent one; a short or guessable
+    # topic is the whole security of an ntfy push.
+    if body.pop("new_topic", False):
+        body["ntfy_topic"] = settings.new_ntfy_topic()
+    return {"settings": settings.save(body), "devices": _device_inventory(),
+            "people": _people_inventory()}
+
+
+@app.post("/api/people/revoke")
+async def api_people_revoke(request: Request):
+    body = await request.json()
+    n = people.revoke_auto(body.get("owner", ""), body.get("requester"))
+    return {"ok": True, "revoked": n, "people": _people_inventory()}
 
 
 @app.get("/api/pairing")
@@ -282,6 +302,50 @@ def match_device_answer(text, options):
         if chunks and all(c in hay for c in chunks):
             return name
     return None
+
+
+# ─── "Allow Sam" / "deny Sam" — the owner's answer ─────────
+# Never routed through the LLM: a model that improvises "sure, allowed!" would
+# be inventing consent. Only the real owner's words resolve a real request.
+CONSENT_RE = re.compile(r"\b(allow|approve|let|yes to|deny|refuse|block|no to)\b", re.I)
+
+
+def looks_like_consent_reply(text, speaker):
+    return bool(speaker and profiles_on() and CONSENT_RE.search(text)
+                and people.pending_for(speaker))
+
+
+async def handle_consent_reply(ws, text, speaker):
+    waiting = people.pending_for(speaker)
+    if not waiting:
+        return False
+    t = text.lower()
+    allow = not re.search(r"\b(deny|refuse|block|no to)\b", t)
+
+    # Match by requester name when several people are waiting; a bare "yes"
+    # only works when there's exactly one thing it could mean.
+    req = next((r for r in waiting if r["requester"].lower() in t), None)
+    if req is None:
+        if len(waiting) > 1:
+            who = ", ".join(f"{r['requester']} ('{r['resource']}')" for r in waiting)
+            await say(ws, f"Which one? {who}", expect_answer=True)
+            return True
+        req = waiting[0]
+
+    people.resolve(req["id"], allow)
+    if not allow:
+        await say(ws, f"Okay — I told {req['requester']} no.")
+        return True
+
+    always = bool(re.search(r"\b(always|from now on|don'?t ask again)\b", t))
+    extra = ""
+    if always:
+        until = people.grant_auto(speaker, req["requester"], hours=24)
+        extra = (f" I won't ask again for {req['requester']} until "
+                 f"{until[11:16]} tomorrow — say 'stop allowing "
+                 f"{req['requester']}' to end it sooner.")
+    await say(ws, f"Done — {req['requester']} can have '{req['resource']}'.{extra}")
+    return True
 
 
 # ─── "Rename that device" — nicknames, deterministic ───────
@@ -565,8 +629,75 @@ def pick_candidates(text, candidates):
 
 
 def file_list_lines(files):
-    return "\n".join(f"{i+1}. {f['name']} ({f['bytes']/1e6:.1f} MB)"
-                     for i, f in enumerate(files))
+    return "\n".join(
+        f"{i+1}. {f['name']} ({f['bytes']/1e6:.1f} MB)"
+        + (f" — {f['owner']}'s" if f.get("owner") else "")
+        for i, f in enumerate(files))
+
+
+# ─── Whose files can this voice see? ──────────────────────
+# Profiles mode off = Lucy exactly as she was: one flat pile, no filtering.
+# On = you see your own space and the common pile, never anyone else's — a
+# voice match picks YOUR space only, because a voice score is a similarity,
+# not proof of who you are.
+def profiles_on():
+    return bool(settings.load().get("profiles_mode"))
+
+
+def files_for_speaker(speaker):
+    if not profiles_on():
+        return recent_files(config.SHARED_DIR, 20)
+    return people.visible_files(speaker)[:20]
+
+
+def find_owned_file(text, speaker):
+    """A file in SOMEONE ELSE's space that this text names, e.g. 'jeff's budget'.
+    Returns (file, owner) or (None, None)."""
+    if not profiles_on():
+        return None, None
+    t = _norm_dev(text)
+    for f in people.all_private_files():
+        if f["owner"] and speaker and f["owner"].lower() == str(speaker).lower():
+            continue                     # your own space isn't "someone else's"
+        stem = _norm_dev(f["name"].rsplit(".", 1)[0])
+        if stem and len(stem) > 3 and stem in t:
+            return f, f["owner"]
+    return None, None
+
+
+async def ask_owner(ws, requester, owner, file_entry):
+    """Cross-space access: the owner decides, not the voice score.
+
+    Auto-allow is honoured only when that person granted it to THIS requester
+    and it hasn't expired — and even then it is announced, never silent.
+    """
+    label = file_entry["name"]
+    if people.auto_allowed(owner, requester):
+        await say(ws, f"{owner} pre-approved this for you, so here's '{label}'. "
+                      f"I'll let {owner} know it was opened.")
+        asyncio.get_running_loop().create_task(
+            _notify_owner(owner, f"{requester} opened '{label}' (you pre-approved this)"))
+        return True
+
+    rid = people.request_access(requester, owner, label)
+    await say(ws, f"That one's {owner}'s, so I've asked {owner} whether to share "
+                  f"'{label}' with you. I'll only send it if they say yes.")
+    asyncio.get_running_loop().create_task(
+        _notify_owner(owner, f"{requester} is asking for '{label}'. "
+                             f"Say 'allow {requester}' or 'deny {requester}'."))
+    return rid
+
+
+async def _notify_owner(owner, message):
+    """Reach the owner wherever they are. Failing to reach them must never
+    silently become a yes — the request just stays pending and expires."""
+    if not registry.has("notify.push"):
+        return
+    try:
+        await registry.call("notify.push", "push",
+                            title=f"Lucy — {owner}", message=message, tag="lock")
+    except Exception as e:
+        print(f"[consent] couldn't reach {owner}: {e}")
 
 
 def parse_dest_choice(text):
@@ -639,10 +770,22 @@ async def execute_share(ws, src_paths, display_name, node_name, dest_alias):
         await say(ws, f"Sending to {device_label(node_name)} failed: {bad}")
 
 
-async def start_share_wizard(ws, context_file, text=""):
+async def start_share_wizard(ws, context_file, text="", speaker=None):
     live = await live_node_names()
     want = wanted_count(text)          # "two of the files" / "all" / None
-    have = recent_files(config.SHARED_DIR, 20)
+
+    # Asking for someone else's file is a consent question, not a file
+    # question — settle that before the wizard offers anything.
+    other, owner = find_owned_file(text, speaker)
+    if other and owner:
+        if not speaker:
+            await say(ws, f"That's {owner}'s file, and I don't recognise your voice, "
+                          f"so I can't ask on your behalf. Enrol first, or ask {owner}.")
+            return None
+        await ask_owner(ws, speaker, owner, other)
+        return None
+
+    have = files_for_speaker(speaker)
 
     # A file was just dropped AND the user asked for one file (or didn't say
     # a number) — the dropped one is unambiguous, use it.
@@ -1090,9 +1233,14 @@ async def ws_endpoint(ws: WebSocket):
             context_file = msg.get("contextFile")
             wants_this_file = context_file and re.search(r"\b(this|it|that)\b", text, re.I)
             if not image_b64 and not continuing:
+                # Someone is waiting on this person's yes/no — that answer
+                # outranks everything else they might have meant.
+                if looks_like_consent_reply(text, speaker):
+                    await handle_consent_reply(ws, text, speaker)
+                    return
                 if wants_this_file:
                     # a file was just dropped/pasted and the user says "send this"
-                    pending_share = await start_share_wizard(ws, context_file, text)
+                    pending_share = await start_share_wizard(ws, context_file, text, speaker)
                     return
                 if looks_like_rename_intent(text):
                     # never let the LLM claim "I've renamed it" — do it for real
@@ -1106,7 +1254,7 @@ async def ws_endpoint(ws: WebSocket):
                 if looks_like_share_intent(text) and not names_a_file(text):
                     # share intent but no explicit filename — ask what to send
                     # rather than grabbing whatever's sitting in the shared folder
-                    pending_share = await start_share_wizard(ws, None, text)
+                    pending_share = await start_share_wizard(ws, None, text, speaker)
                     return
 
             # Phase 2: planner may route this to a device task first

@@ -5,8 +5,15 @@ into a junk drawer. Values are read fresh on every use (no caching): the
 file is small and this keeps toggle flips instant across the ws pipeline.
 """
 import json
+import secrets
 
 from . import config
+
+
+def new_ntfy_topic():
+    """A topic long enough that nobody guesses their way into your pushes."""
+    return "lucy-" + secrets.token_hex(12)
+
 
 DEFAULTS = {
     # "Connect devices through Lucy": when she detects a connect command she
@@ -14,6 +21,13 @@ DEFAULTS = {
     "connect_devices": False,
     # Which device to wake; "" = auto (the only / the named one).
     "connect_target": "",
+    # "Separate profiles by voice": off = Lucy behaves exactly as she always
+    # has (one person, one shared pile of files). On = each enrolled voice
+    # gets its own space, and crossing into someone else's needs their yes.
+    "profiles_mode": False,
+    # ntfy topic the phone subscribes to. On the public server this string IS
+    # the credential — long and random, never committed (data/ is gitignored).
+    "ntfy_topic": "",
 }
 
 

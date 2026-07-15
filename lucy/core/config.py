@@ -32,6 +32,27 @@ SETTINGS_PATH    = DATA_DIR / "settings.json"      # UI-editable toggles
 KNOWN_NODES_PATH = DATA_DIR / "known_nodes.json"   # name -> ip/mac for WoL
 WAKE_WAIT_S      = 45   # how long Lucy watches for a woken device to join
 
+# ── Notifications (phone) ─────────────────────────────────
+# ntfy needs no account: the phone subscribes to one long random topic and
+# Lucy POSTs to it. On the public server the topic IS the credential.
+NTFY_URL = "https://ntfy.sh"
+
+# ── People: voice profiles & private spaces ───────────────
+PROFILES_PATH = DATA_DIR / "profiles.json"       # who Lucy knows, and their space
+SPACES_DIR    = DATA_DIR / "shared" / "_spaces"  # one folder per person
+
+# Voice tells Lucy WHO is talking. It does not unlock anything by itself: a
+# recording can pass it, and relatives sound alike (SPEAKER_THRESHOLD 0.65 sits
+# only ~0.10 above a measured impostor). So the bar rises once more than one
+# person is enrolled, and reaching into someone else's space always needs that
+# person's consent rather than a good-enough voice score.
+SPEAKER_THRESHOLD_MULTI = 0.75   # accept score when 2+ people are enrolled
+SPEAKER_COLLISION       = 0.70   # a new voice this close to an existing one is ambiguous
+SPEAKER_UPDATE_MIN      = 0.80   # only learn from a clearly confident match...
+SPEAKER_UPDATE_MARGIN   = 0.12   # ...that also beats the runner-up by this much
+ENROLL_SAMPLES_MULTI    = 3      # samples required to enrol while sharing Lucy
+ACCESS_REQUEST_TTL_S    = 600    # unanswered consent request expires (silence = no)
+
 # ── File sharing (ecosystem) ──────────────────────────────
 SHARED_DIR  = DATA_DIR / "shared"   # the core's shared drop folder
 MAX_FILE_MB = 200
