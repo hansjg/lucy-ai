@@ -7,7 +7,7 @@ import gc, re, json, base64, asyncio, shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import uvicorn
@@ -151,7 +151,11 @@ async def api_settings_post(request: Request):
 
 
 @app.get("/api/pairing")
-async def api_pairing():
+async def api_pairing(response: Response):
+    # The token rotates. A cached response here hands out a DEAD command and
+    # the device fails with a bare "auth failed" for no visible reason — so
+    # this endpoint must never be cached by the browser.
+    response.headers["Cache-Control"] = "no-store, must-revalidate"
     return {"command": f"$env:LUCY_TOKEN='{get_node_token()}'; "
                        f"irm http://{lan_ip()}:{config.PORT}/node/bootstrap.ps1 | iex"}
 
