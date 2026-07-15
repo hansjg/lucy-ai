@@ -66,7 +66,13 @@ def unregister_mdns():
 def get_node_token():
     config.DATA_DIR.mkdir(exist_ok=True)
     if not config.NODE_TOKEN_PATH.exists():
+        # Minting silently here is a trap: if the file vanishes while the core
+        # is up, the pairing line printed at boot stops matching what auth
+        # actually checks, and every device fails with an unexplained
+        # "auth failed". Say it loudly — a new token means everyone re-pairs.
         config.NODE_TOKEN_PATH.write_text(secrets.token_hex(24), encoding="utf-8")
+        print("!! no node token on disk - minted a NEW one. Every paired device "
+              "must re-pair using the command in the nodes panel.")
     return config.NODE_TOKEN_PATH.read_text(encoding="utf-8").strip()
 
 
@@ -241,8 +247,20 @@ async def node_ws(ws: WebSocket):
     conn = None
     try:
         hello = await asyncio.wait_for(ws.receive_json(), timeout=10)
+        sent = str(hello.get("token", ""))
         if hello.get("type") != "hello" or not hmac.compare_digest(
-                str(hello.get("token", "")), get_node_token()):
+                sent, get_node_token()):
+            # A stale token is the #1 pairing failure, and rejecting it in
+            # silence leaves the user staring at "auth failed" on the device
+            # with nothing on this end to compare against. Never print either
+            # token — length and origin are enough to tell them apart.
+            who = hello.get("node", "?")
+            src = ws.client.host if ws.client else "?"
+            why = ("no token sent" if not sent else
+                   f"token mismatch (sent {len(sent)} chars, "
+                   f"expected {len(get_node_token())})")
+            print(f"!! auth REJECTED from '{who}' at {src}: {why}. "
+                  f"Re-pair it with the command in the nodes panel.")
             await ws.send_json({"type": "auth_failed"})
             await ws.close()
             return
