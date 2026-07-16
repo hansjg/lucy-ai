@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20260713a">
+  <link rel="stylesheet" href="/static/style.css?v=20260717a">
 </head>
 <body>
 
@@ -66,6 +66,29 @@
     </div>
     <select id="set-target"><option value="">auto</option></select>
   </div>
+
+  <div class="tp-head">people &amp; privacy</div>
+  <div class="set-row">
+    <div class="set-text">
+      <div class="set-title">Separate profiles by voice</div>
+      <div class="set-desc">Each recognised voice gets its own private file space.
+        Reaching into someone else's asks them first. Off = one shared space
+        for everyone (how Lucy works today).</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="set-profiles">
+      <span class="knob"></span>
+    </label>
+  </div>
+  <div class="set-row">
+    <div class="set-text">
+      <div class="set-title">Phone notifications</div>
+      <div class="set-desc" id="set-ntfy-hint">Needed so consent requests reach
+        your phone. Install the ntfy app, then create a topic and subscribe to it.</div>
+    </div>
+    <button id="set-ntfy-btn" class="mini-btn">create topic</button>
+  </div>
+  <div id="set-people" class="tp-list"></div>
 </div>
 
 <!-- ── Lucy ── -->
@@ -125,6 +148,6 @@
   </button>
 </div>
 
-<script src="/static/app.js?v=20260715a"></script>
+<script src="/static/app.js?v=20260717a"></script>
 </body>
 </html>

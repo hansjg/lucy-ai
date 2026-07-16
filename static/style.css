@@ -206,6 +206,19 @@ html, body {
   user-select: all;
 }
 .tp-pairing-cmd:hover { color: var(--accent); }
+.mini-btn {
+  flex: none;
+  font: 600 11px 'JetBrains Mono', monospace;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-soft);
+  color: var(--ink);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.mini-btn:hover { color: var(--accent); border-color: rgba(124, 92, 255, 0.6); }
+.mini-btn.revoke { padding: 2px 8px; margin-left: 6px; }
 .tp-head {
   font-family: 'JetBrains Mono', monospace;
   font-size: 9px;

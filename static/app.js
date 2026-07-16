@@ -950,6 +950,10 @@ const settingsPanel = document.getElementById('settings-panel');
 const setConnect    = document.getElementById('set-connect');
 const setTarget     = document.getElementById('set-target');
 const setDevicesHint = document.getElementById('set-devices-hint');
+const setProfiles   = document.getElementById('set-profiles');
+const setNtfyBtn    = document.getElementById('set-ntfy-btn');
+const setNtfyHint   = document.getElementById('set-ntfy-hint');
+const setPeople     = document.getElementById('set-people');
 
 function renderSettings(res) {
   setConnect.checked = !!res.settings.connect_devices;
@@ -961,6 +965,25 @@ function renderSettings(res) {
   setDevicesHint.textContent = devs.length
     ? `${devs.length} known device${devs.length > 1 ? 's' : ''}`
     : 'no devices paired yet — see the nodes panel';
+
+  setProfiles.checked = !!res.settings.profiles_mode;
+
+  // Never render the topic itself — it's the credential. Show only that one
+  // exists, so a shoulder-surfer can't read it off the screen.
+  const hasTopic = !!res.settings.ntfy_topic;
+  setNtfyBtn.textContent = hasTopic ? 'new topic' : 'create topic';
+  setNtfyHint.textContent = hasTopic
+    ? "Topic is set — subscribe to it in the ntfy app if you haven't. 'New topic' replaces it (you'd re-subscribe)."
+    : "Needed so consent requests reach your phone. Install the ntfy app, then create a topic and subscribe to it.";
+
+  const ppl = res.people || [];
+  const grants = ppl.flatMap(p => (p.auto_allow || []).map(a => ({ owner: p.name, ...a })));
+  setPeople.innerHTML = ppl.length
+    ? ppl.map(p => `<div class="tp-row"><b>${p.name}</b> <span class="tp-caps">private space</span></div>`).join('')
+      + grants.map(g => `<div class="tp-row">↳ auto-allows <b>${g.requester}</b>`
+          + ` <span class="tp-caps">until ${(g.expires || '').slice(5, 16).replace('T', ' ')}</span>`
+          + ` <button class="mini-btn revoke" data-owner="${g.owner}" data-req="${g.requester}">stop</button></div>`).join('')
+    : '<div class="tp-row tp-caps">no voice profiles yet — say "Lucy, remember my voice, I\'m &lt;name&gt;"</div>';
 }
 
 async function loadSettings() {
@@ -968,19 +991,48 @@ async function loadSettings() {
   catch (_) { /* server restarting */ }
 }
 
-async function saveSettings() {
+async function saveSettings(extra = {}) {
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ connect_devices: setConnect.checked, connect_target: setTarget.value }),
+      body: JSON.stringify({
+        connect_devices: setConnect.checked,
+        connect_target: setTarget.value,
+        profiles_mode: setProfiles.checked,
+        ...extra,
+      }),
     }).then(r => r.json());
     renderSettings(res);
   } catch (_) {}
 }
 
-setConnect.addEventListener('change', saveSettings);
-setTarget.addEventListener('change', saveSettings);
+setConnect.addEventListener('change', () => saveSettings());
+setTarget.addEventListener('change', () => saveSettings());
+setProfiles.addEventListener('change', () => saveSettings());
+
+setNtfyBtn.addEventListener('click', () => {
+  // Replacing an existing topic silently would strand the phone on a topic
+  // Lucy no longer posts to — make that trade explicit.
+  if (setNtfyBtn.textContent === 'new topic' &&
+      !confirm('Replace the phone topic? You will need to re-subscribe in the ntfy app.')) return;
+  saveSettings({ new_topic: true });
+  quip('topic ready — open ntfy on your phone and subscribe', 3600);
+});
+
+setPeople.addEventListener('click', async e => {
+  const btn = e.target.closest('.revoke');
+  if (!btn) return;
+  try {
+    const res = await fetch('/api/people/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner: btn.dataset.owner, requester: btn.dataset.req }),
+    }).then(r => r.json());
+    renderSettings({ settings: await fetch('/api/settings').then(r => r.json()).then(s => s.settings), people: res.people, devices: [] });
+    loadSettings();
+  } catch (_) {}
+});
 
 function closeSettingsPanel() {
   settingsPanel.hidden = true;
