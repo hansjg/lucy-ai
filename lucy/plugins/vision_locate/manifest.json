@@ -1,0 +1,8 @@
+{
+  "capability": "vision.locate",
+  "provider": "LocateAnything-3B",
+  "actions": ["detect", "status", "release"],
+  "requires": {"hardware": "cuda"},
+  "permissions": ["camera-data"],
+  "version": "0.1.0"
+}

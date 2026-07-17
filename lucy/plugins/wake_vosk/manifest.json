@@ -1,0 +1,9 @@
+{
+  "capability": "audio.wake",
+  "provider": "vosk",
+  "actions": ["listen"],
+  "requires": {"hardware": "microphone"},
+  "permissions": ["microphone"],
+  "version": "0.1.0",
+  "meta": {"emits": ["wake"]}
+}

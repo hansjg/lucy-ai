@@ -1,0 +1,122 @@
+================================================================
+  LUCY - CHARACTER DRAWING GUIDE
+  For animated puppet-style rigging
+================================================================
+
+CANVAS RULE
+-----------
+Every single part must be drawn on the SAME canvas size: 512x512 px
+Use transparent background (PNG format).
+Draw each part in its natural resting position centered/positioned
+where it would appear on Lucy's body — the code will composite them.
+
+
+================================================================
+  PARTS TO DRAW (13 files total)
+================================================================
+
+1. HAIR  →  lucy_hair.png
+   - Sways gently during idle animation
+   - Draw over/behind head as normal
+
+2. HEAD  →  lucy_head.png
+   - Will do slight nod and tilt animations
+   - Pivot point: base of neck (mark in your art file, don't export)
+
+3. FACE EXPRESSIONS (x4 separate files)
+   - These are swapped based on Lucy's emotional state
+   - Draw only the face features (eyes, mouth, eyebrows)
+   - They layer on TOP of the head automatically
+
+   lucy_face_idle.png      → neutral, resting expression
+   lucy_face_happy.png     → smile, bright eyes (talking / positive reply)
+   lucy_face_thinking.png  → looking up/sideways, pondering
+   lucy_face_surprised.png → wide eyes, open mouth (wake word trigger)
+
+4. BODY / TORSO  →  lucy_body.png
+   - Static base layer, does not move
+   - Layer 1 (drawn first, everything else goes on top)
+
+5. LEFT UPPER ARM  →  lucy_arm_l_upper.png
+   - Draw pointing STRAIGHT DOWN from shoulder
+   - Pivot point: shoulder joint (top of arm)
+
+6. LEFT FOREARM  →  lucy_arm_l_lower.png
+   - Draw pointing STRAIGHT DOWN from elbow
+   - Pivot point: elbow joint (top of forearm)
+
+7. LEFT HAND  →  lucy_hand_l.png
+   - Attaches to the tip of the left forearm
+   - No pivot needed, moves with forearm
+
+8. RIGHT UPPER ARM  →  lucy_arm_r_upper.png
+   - Mirror of left, draw pointing STRAIGHT DOWN
+   - Pivot point: shoulder joint (top of arm)
+
+9. RIGHT FOREARM  →  lucy_arm_r_lower.png
+   - Draw pointing STRAIGHT DOWN from elbow
+   - Pivot point: elbow joint (top of forearm)
+
+10. RIGHT HAND  →  lucy_hand_r.png
+    - Attaches to the tip of the right forearm
+    - No pivot needed, moves with forearm
+
+
+================================================================
+  DRAWING RULES
+================================================================
+
+[ ] All parts on the SAME 512x512 px canvas — they auto-align when stacked
+[ ] Transparent background on every file
+[ ] Draw each part in its NATURAL RESTING POSITION
+[ ] Arms must be drawn pointing STRAIGHT DOWN — makes rotation math clean
+[ ] Mark pivot points in your art file as a reference dot (don't export them)
+[ ] Save every file as PNG with transparency
+
+
+================================================================
+  PIVOT POINT REFERENCE (where code rotates each part from)
+================================================================
+
+  Head          → base of neck
+  Left arm      → shoulder joint (top of upper arm)
+  Left forearm  → elbow joint (top of forearm)
+  Right arm     → shoulder joint (top of upper arm)
+  Right forearm → elbow joint (top of forearm)
+  Hair          → top-center of head
+  Hands         → no pivot (follows forearm tip)
+  Body          → no pivot (static)
+  Face layers   → no pivot (locked to head position)
+
+
+================================================================
+  EMOTIONS → EXPRESSION MAPPING (for reference)
+================================================================
+
+  Lucy idle / listening   → lucy_face_idle.png
+  Lucy speaking / happy   → lucy_face_happy.png
+  Lucy processing/thinking→ lucy_face_thinking.png
+  Wake word triggered     → lucy_face_surprised.png
+
+
+================================================================
+  FILE NAMES — EXACT (drop into static/ folder when done)
+================================================================
+
+  lucy_body.png
+  lucy_head.png
+  lucy_hair.png
+  lucy_arm_l_upper.png
+  lucy_arm_l_lower.png
+  lucy_hand_l.png
+  lucy_arm_r_upper.png
+  lucy_arm_r_lower.png
+  lucy_hand_r.png
+  lucy_face_idle.png
+  lucy_face_happy.png
+  lucy_face_thinking.png
+  lucy_face_surprised.png
+
+================================================================
+  TOTAL: 13 PNG files
+================================================================

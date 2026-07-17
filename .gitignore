@@ -1,0 +1,74 @@
+# Windows system files
+NTUSER.DAT*
+ntuser.dat*
+ntuser.ini
+*.TM.blf
+*.TMContainer*
+
+# User folders (not Lucy)
+.cache/
+.cagent/
+.claude/
+.codex/
+.config/
+.docker/
+.factory/
+.ollama/
+.openclaw/
+3D Objects/
+AppData/
+Application Data/
+Contacts/
+Cookies/
+Downloads/
+Favorites/
+IntelGraphicsProfiles/
+Links/
+Local Settings/
+Music/
+My Documents/
+NetHood/
+OneDrive/
+PrintHood/
+Recent/
+Saved Games/
+Searches/
+SendTo/
+Start Menu/
+Templates/
+Videos/
+
+# Lucy runtime / secrets — node token, voiceprints, settings, db: NEVER commit
+data/
+god-ears/data/
+
+# Separate projects / heavy artifacts
+lucy-web/
+ai-chatbot/
+static_cp2077_backup/
+vosk-model/
+
+# Lucy runtime / temp
+ai_memory/
+ai_chatbot/
+bin/
+__pycache__/
+*.pyc
+*.wav
+*.bak
+*.bak2
+kokoro-v1.0.onnx
+voices-v1.0.bin
+test_mic.wav
+test_stt.py
+out.wav
+mic_input.wav
+ai_response.wav
+main.py.bak*
+static/app.js.bak*
+static/index.html.bak*
+static/style.css.bak*
+requirements.txt
+
+# node-local config carries the auth token
+lucy/node/config.json

@@ -1,0 +1,8 @@
+{
+  "capability": "speech.stt",
+  "provider": "faster-whisper",
+  "actions": ["transcribe"],
+  "requires": {"hardware": "cuda-preferred"},
+  "permissions": ["microphone-data"],
+  "version": "0.1.0"
+}

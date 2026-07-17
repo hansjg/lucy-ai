@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Lucy</title>
+  <link rel="manifest" href="/static/mobile/manifest.json">
+  <meta name="theme-color" content="#7c5cff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lucy">
+  <link rel="apple-touch-icon" href="/static/mobile/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/mobile/style.css?v=1">
+</head>
+<body>
+
+<header id="m-topbar">
+  <div id="m-brand">LUCY</div>
+</header>
+
+<main id="m-main">
+  <section id="m-enable" class="m-card">
+    <p>Enable notifications to get consent requests instantly, with Allow/Deny
+      right on the notification.</p>
+    <button id="m-enable-btn" class="m-btn">Enable notifications</button>
+    <p id="m-enable-hint" class="m-hint"></p>
+  </section>
+
+  <section>
+    <h2 class="m-head">Pending requests</h2>
+    <div id="m-pending" class="m-list">
+      <div class="m-row m-faint">nothing waiting on you right now</div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="m-head">Devices</h2>
+    <div id="m-nodes" class="m-list"></div>
+  </section>
+</main>
+
+<script src="/static/mobile/app.js?v=1"></script>
+</body>
+</html>

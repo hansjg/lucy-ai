@@ -1,0 +1,124 @@
+/* Lucy mobile PWA — light prism palette, values mirrored from
+   static/style.css's :root (no build step to share them automatically,
+   so keep these in sync by hand if the desktop palette changes). */
+
+:root {
+  --ink:        #262233;
+  --ink-soft:   #6e6880;
+  --ink-faint:  #a49ebc;
+  --accent:     #7c5cff;
+  --accent-2:   #6a4af0;
+  --glass:      rgba(255, 255, 255, 0.72);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --ok:         #4caf82;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  min-height: 100%;
+  font-family: 'Manrope', sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(160deg, #f6f3fc 0%, #eef1f9 55%, #f3eef7 100%);
+}
+
+body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+#m-topbar {
+  padding: 20px 20px 8px;
+}
+
+#m-brand {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-size: 15px;
+  color: var(--accent);
+}
+
+#m-main {
+  padding: 8px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.m-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 12px 32px rgba(124, 92, 255, 0.13), 0 2px 8px rgba(124, 92, 255, 0.07);
+}
+
+.m-card p {
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.m-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 13px;
+  font-family: 'Manrope', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.m-btn:hover { background: var(--accent-2); }
+.m-btn:active { transform: scale(0.98); }
+.m-btn:disabled {
+  background: var(--ink-faint);
+  cursor: default;
+  transform: none;
+}
+
+.m-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.m-head {
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+
+.m-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-row {
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.m-row b { font-weight: 600; }
+
+.m-faint { color: var(--ink-faint); font-size: 12px; }
+.m-ok    { color: var(--ok); font-size: 12px; }

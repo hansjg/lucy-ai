@@ -1,0 +1,8 @@
+{
+  "capability": "notify.push",
+  "provider": "ntfy",
+  "actions": ["push"],
+  "requires": {"network": "internet"},
+  "permissions": ["notifications"],
+  "version": "0.1.0"
+}

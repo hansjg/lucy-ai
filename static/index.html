@@ -3,103 +3,151 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LUCY — AI COMPANION</title>
+  <title>LUCY — by dexalab</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=20260717a">
 </head>
 <body>
 
-<canvas id="bg-canvas"></canvas>
-<div id="bg-overlay"></div>
-
-<div id="app">
-
-  <!-- ── Character panel ── -->
-  <div id="character-panel">
-    <canvas id="hack-canvas"></canvas>
-
-    <div class="hud-row top-hud">
-      <span class="hud-tag">NC NC4884 0252</span>
-      <span class="hud-tag accent">KIROSHI ▮▮▮</span>
-    </div>
-
-    <div id="character-name">LUCY</div>
-    <div id="character-sub">AI COMPANION — MEMORY ON</div>
-
-    <div id="live2d-wrapper">
-      <canvas id="live2d-canvas"></canvas>
-      <div id="lucy-wrap">
-        <canvas id="lucy-canvas"></canvas>
-        <div id="mouth-open-anim"></div>
-      </div>
-      <div class="frame-corner tl"></div>
-      <div class="frame-corner tr"></div>
-      <div class="frame-corner bl"></div>
-      <div class="frame-corner br"></div>
-      <div class="scanlines"></div>
-    </div>
-
-    <div id="status-row">
-      <div id="status-dot"></div>
-      <span id="status-text">READY_</span>
-    </div>
-
-    <div id="controls">
-      <button id="ptt-btn" title="Hold SPACE or hold this button">
-        <span id="ptt-icon">🎤</span>
-        <span id="ptt-label">HOLD TO SPEAK</span>
-      </button>
-      <button id="cam-btn" title="Toggle camera">📷</button>
-    </div>
-
-    <div id="camera-wrap">
-      <video id="camera-feed" autoplay muted playsinline title="Click to snap"></video>
-      <div id="snap-overlay">
-        <img id="snap-img" src="" alt="" title="Click to re-snap">
-      </div>
-    </div>
-
-    <div class="hud-row bottom-hud">
-      <span class="hud-tag dim">MODEL: LUCY-77B</span>
-      <span class="hud-tag dim">VOICE: NEURAL-SYNTH V2.1</span>
-    </div>
-  </div>
-
-  <!-- ── Chat panel ── -->
-  <div id="chat-panel">
-    <div id="chat-header">
-      <div>
-        <div id="chat-title">LUCY</div>
-        <div id="chat-subtitle">AI COMPANION · MEMORY ON</div>
-      </div>
-      <div id="conn-status">
-        <div id="header-dot"></div>
-        <span class="conn-label">CONNECTION STABLE<br><span class="dim">DATA LINE SECURE</span></span>
-      </div>
-    </div>
-
-    <div id="messages"></div>
-
-    <div id="live-transcript" hidden>
-      <span id="transcript-text"></span>
-    </div>
-
-    <div id="snap-attached" hidden>
-      <img id="snap-img" src="" alt="">
-      <span id="snap-clear-btn">✕</span>
-    </div>
-    <div id="text-input-row">
-      <input id="text-input" type="text" placeholder="TYPE YOUR MESSAGE..." autocomplete="off" spellcheck="false">
-      <button id="send-btn">SEND</button>
-    </div>
-  </div>
-
+<!-- ── Prism background ── -->
+<div id="prism-bg" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="blob b4"></div>
 </div>
 
-<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/pixi.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
-<script src="/static/app.js"></script>
+<!-- ── Top bar ── -->
+<header id="topbar">
+  <div id="brand">LUCY <span>by dexalab</span></div>
+  <div id="topbar-right">
+    <button id="nodes-btn" title="nodes & task log">nodes</button>
+    <button id="settings-btn" title="settings">settings</button>
+    <div id="status-chip">
+      <span id="status-dot"></span>
+      <span id="status-text">connecting…</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Nodes & task log panel ── -->
+<div id="task-panel" hidden>
+  <div class="tp-head">nodes</div>
+  <div id="tp-nodes" class="tp-list"></div>
+  <div class="tp-head">pair a new device</div>
+  <div id="tp-pairing" class="tp-list"></div>
+  <div class="tp-head">shared files</div>
+  <div id="tp-files" class="tp-list"></div>
+  <div class="tp-head">recent tasks</div>
+  <div id="tp-tasks" class="tp-list"></div>
+</div>
+
+<!-- ── Settings panel ── -->
+<div id="settings-panel" hidden>
+  <div class="tp-head">settings</div>
+  <div class="set-row">
+    <div class="set-text">
+      <div class="set-title">Connect devices through Lucy</div>
+      <div class="set-desc">When Lucy detects a command to connect, she will
+        automatically bring the set device online through a remote
+        wake&#8209;on&#8209;LAN signal.</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="set-connect">
+      <span class="knob"></span>
+    </label>
+  </div>
+  <div class="set-row">
+    <div class="set-text">
+      <div class="set-title">Device to wake</div>
+      <div class="set-desc" id="set-devices-hint">paired devices appear here</div>
+    </div>
+    <select id="set-target"><option value="">auto</option></select>
+  </div>
+
+  <div class="tp-head">people &amp; privacy</div>
+  <div class="set-row">
+    <div class="set-text">
+      <div class="set-title">Separate profiles by voice</div>
+      <div class="set-desc">Each recognised voice gets its own private file space.
+        Reaching into someone else's asks them first. Off = one shared space
+        for everyone (how Lucy works today).</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="set-profiles">
+      <span class="knob"></span>
+    </label>
+  </div>
+  <div class="set-row">
+    <div class="set-text">
+      <div class="set-title">Phone notifications</div>
+      <div class="set-desc" id="set-ntfy-hint">Needed so consent requests reach
+        your phone. Install the ntfy app, then create a topic and subscribe to it.</div>
+    </div>
+    <button id="set-ntfy-btn" class="mini-btn">create topic</button>
+  </div>
+  <div id="set-people" class="tp-list"></div>
+</div>
+
+<!-- ── Lucy ── -->
+<div id="lucy-stage">
+  <div id="lucy-bubble"><span id="lucy-bubble-text"></span></div>
+  <div id="lucy-float">
+    <div id="lucy-sprite">
+      <img id="pose-a" src="/static/poses/wave.png" alt="Lucy" draggable="false">
+      <img id="pose-b" src="/static/poses/base.png" alt="" draggable="false">
+      <video id="pose-video" muted playsinline preload="auto"></video>
+    </div>
+  </div>
+  <div id="lucy-shadow"></div>
+</div>
+
+<!-- ── Camera droplet ── -->
+<aside id="cam-stage">
+  <div id="cam-droplet">
+    <video id="camera-feed" autoplay muted playsinline title="click to snap"></video>
+    <canvas id="detect-overlay"></canvas>
+    <div id="detect-bar">
+      <input id="detect-query" type="text" placeholder="find anything… (empty = all objects)"
+             autocomplete="off" spellcheck="false">
+    </div>
+    <div id="snap-overlay">
+      <img id="snap-img" src="" alt="" title="click to re-snap">
+      <button id="snap-clear" title="discard snapshot">✕</button>
+    </div>
+    <div id="cam-footer">
+      <span class="mono" id="cam-caption">camera · on-device</span>
+      <div id="cam-footer-right">
+        <span id="detect-stats" class="mono"></span>
+        <button id="detect-btn" title="live detection — LocateAnything-3B"><i></i> detect</button>
+        <span id="cam-live"><i></i> live</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── Chat flow ── -->
+<main id="chat-flow">
+  <div id="messages"></div>
+</main>
+
+<!-- ── Input dock ── -->
+<div id="dock">
+  <button id="cam-btn" title="toggle camera" aria-label="toggle camera">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="3"/></svg>
+  </button>
+  <button id="ptt-btn" title="hold to speak (or hold Space)" aria-label="hold to speak">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+    <span id="ptt-ring"></span>
+  </button>
+  <input id="text-input" type="text" placeholder="say something to lucy…" autocomplete="off" spellcheck="false">
+  <button id="send-btn" title="send" aria-label="send">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+  </button>
+</div>
+
+<script src="/static/app.js?v=20260717a"></script>
 </body>
 </html>
