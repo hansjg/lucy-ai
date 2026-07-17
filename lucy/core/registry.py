@@ -95,22 +95,27 @@ class Registry:
                 continue
             manifest = json.loads(mf.read_text(encoding="utf-8"))
             module = importlib.import_module(f"lucy.plugins.{mdir.name}.plugin")
-            cap = manifest["capability"]
-            self._plugins[cap] = module.Plugin(PluginContext(self, manifest))
-            self.manifests[cap] = manifest
+            # Keyed by plugin dir, not capability — two plugins (e.g.
+            # notify_ntfy and notify_webpush) can share one capability;
+            # keying by capability here would let the second one silently
+            # clobber the first before start_all() ever runs it.
+            self._plugins[mdir.name] = module.Plugin(PluginContext(self, manifest))
+            self.manifests[mdir.name] = manifest
 
     async def start_all(self):
         self.loop = asyncio.get_running_loop()
-        for cap in list(self._plugins):
+        for name in list(self._plugins):
+            manifest = self.manifests[name]
+            cap = manifest["capability"]
             try:
-                await self._plugins[cap].start()
-                provider = self.manifests[cap].get("provider", "")
+                await self._plugins[name].start()
+                provider = manifest.get("provider", "")
                 print(f"  [ok] {cap:<14} {provider}")
                 self.providers.setdefault(cap, []).append(
-                    LocalProvider(self._plugins[cap], self.manifests[cap]))
+                    LocalProvider(self._plugins[name], manifest))
             except Exception as e:
                 print(f"  [!!] {cap:<14} failed to start: {e}")
-                del self._plugins[cap]
+                del self._plugins[name]
 
     # ── remote node capabilities ──────────────────────────
     def add_remote(self, node_conn, manifest):

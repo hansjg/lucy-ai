@@ -37,6 +37,12 @@ WAKE_WAIT_S      = 45   # how long Lucy watches for a woken device to join
 # Lucy POSTs to it. On the public server the topic IS the credential.
 NTFY_URL = "https://ntfy.sh"
 
+# Web Push (Lucy's own installable PWA) — per-person subscriptions, no
+# third-party app or account. VAPID_CLAIMS_SUBJECT is sent to the push
+# service (Apple/Google), never shown to the user; RFC 8292 requires it.
+PUSH_SUBSCRIPTIONS_PATH = DATA_DIR / "push_subscriptions.json"
+VAPID_CLAIMS_SUBJECT = "mailto:hansjoerg.gozal@gmail.com"
+
 # ── People: voice profiles & private spaces ───────────────
 PROFILES_PATH = DATA_DIR / "profiles.json"       # who Lucy knows, and their space
 SPACES_DIR    = DATA_DIR / "shared" / "_spaces"  # one folder per person

@@ -15,6 +15,29 @@ def new_ntfy_topic():
     return "lucy-" + secrets.token_hex(12)
 
 
+def new_vapid_keys():
+    """A fresh VAPID keypair for Web Push, in the exact forms each consumer
+    needs: the public half as the raw 65-byte uncompressed P-256 point,
+    base64url-encoded with no padding (what pushManager.subscribe() expects
+    as applicationServerKey — malformed encoding here is the #1 real-world
+    Web Push bug). The private half is stored as PEM text; notify_webpush
+    must reconstruct it with Vapid.from_pem() before signing — passing the
+    PEM string straight to pywebpush's webpush() fails, since it tries to
+    base64-decode it as a headerless key."""
+    from cryptography.hazmat.primitives import serialization
+    from py_vapid import Vapid
+    from py_vapid.utils import b64urlencode
+
+    v = Vapid()
+    v.generate_keys()
+    public_raw = v.public_key.public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    return {
+        "vapid_private_key": v.private_pem().decode(),
+        "vapid_public_key": b64urlencode(public_raw),
+    }
+
+
 DEFAULTS = {
     # "Connect devices through Lucy": when she detects a connect command she
     # sends the chosen device a Wake-on-LAN signal instead of just talking.
@@ -28,6 +51,10 @@ DEFAULTS = {
     # ntfy topic the phone subscribes to. On the public server this string IS
     # the credential — long and random, never committed (data/ is gitignored).
     "ntfy_topic": "",
+    # VAPID keypair for Lucy's own Web Push PWA. Private key never leaves
+    # this file; public key is handed to the browser's pushManager.subscribe().
+    "vapid_public_key": "",
+    "vapid_private_key": "",
 }
 
 

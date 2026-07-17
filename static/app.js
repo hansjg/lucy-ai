@@ -979,7 +979,8 @@ function renderSettings(res) {
   const ppl = res.people || [];
   const grants = ppl.flatMap(p => (p.auto_allow || []).map(a => ({ owner: p.name, ...a })));
   setPeople.innerHTML = ppl.length
-    ? ppl.map(p => `<div class="tp-row"><b>${p.name}</b> <span class="tp-caps">private space</span></div>`).join('')
+    ? ppl.map(p => `<div class="tp-row"><b>${p.name}</b> <span class="tp-caps">private space</span><br>
+        <span class="tp-pairing-cmd mono" title="click to copy — open on ${p.name}'s phone, then Add to Home Screen">${location.origin}${p.mobile_link}</span></div>`).join('')
       + grants.map(g => `<div class="tp-row">↳ auto-allows <b>${g.requester}</b>`
           + ` <span class="tp-caps">until ${(g.expires || '').slice(5, 16).replace('T', ' ')}</span>`
           + ` <button class="mini-btn revoke" data-owner="${g.owner}" data-req="${g.requester}">stop</button></div>`).join('')
@@ -1021,6 +1022,11 @@ setNtfyBtn.addEventListener('click', () => {
 });
 
 setPeople.addEventListener('click', async e => {
+  const link = e.target.closest('.tp-pairing-cmd');
+  if (link) {
+    navigator.clipboard?.writeText(link.textContent).then(() => quip('install link copied!', 2000));
+    return;
+  }
   const btn = e.target.closest('.revoke');
   if (!btn) return;
   try {

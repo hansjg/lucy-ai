@@ -15,6 +15,13 @@ set OLLAMA_GPU_OVERHEAD=0
 set HF_HOME=D:\LucyCache\huggingface
 set OLLAMA_MODELS=D:\LucyCache\ollama-models
 
+:: ── Phone install + push notifications (optional) ──────────
+:: /mobile/<name> needs a real HTTPS hostname reachable from the phone —
+:: start Tailscale separately and run once:
+::   tailscale serve https / http://localhost:8000
+:: Lucy boots and runs fully LAN-only without this; only the phone
+:: install/subscribe page needs it.
+
 :: ── Start Ollama in background if not running ─────────────
 tasklist /fi "imagename eq ollama.exe" 2>nul | find /i "ollama.exe" >nul
 if errorlevel 1 (

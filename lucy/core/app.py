@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import uvicorn
 
-from . import config, memory, db, scheduler, planner, settings, people
+from . import config, memory, db, scheduler, planner, settings, people, push_subs
 from .registry import registry
 from .nodes import (router as node_router, node_manager, print_pairing_line,
                     register_mdns, unregister_mdns, safe_name,
@@ -94,7 +94,7 @@ async def api_nodes():
         "kind": "local",
         "alive": True,
         "os": "this machine",
-        "capabilities": sorted(registry.manifests.keys()),
+        "capabilities": sorted(registry.providers.keys()),
         "stats": {},
     }
     remote = node_manager.snapshot()
@@ -151,7 +151,8 @@ def _people_inventory():
     """Who Lucy knows, with the pre-approvals each has granted. The topic
     itself is never included here — the UI asks for it separately."""
     return [{"name": p["name"], "space": p["space"],
-             "auto_allow": p.get("auto_allow", [])} for p in people.load()]
+             "auto_allow": p.get("auto_allow", []),
+             "mobile_link": f"/mobile/{p['space']}"} for p in people.load()]
 
 
 @app.get("/api/settings")
@@ -186,6 +187,47 @@ async def api_pairing(response: Response):
     response.headers["Cache-Control"] = "no-store, must-revalidate"
     return {"command": f"$env:LUCY_TOKEN='{get_node_token()}'; "
                        f"irm http://{lan_ip()}:{config.PORT}/node/bootstrap.ps1 | iex"}
+
+
+# ─── Mobile PWA (Web Push install + dashboard) ────────────
+@app.get("/mobile/{slug}")
+async def mobile_page(slug: str):
+    # Same no-cache header as "/" — a cached copy here would make future UI
+    # updates invisible on the phone, the exact bug already hit once for "/".
+    return FileResponse(str(config.STATIC_DIR / "mobile" / "index.html"),
+                        headers={"Cache-Control": "no-cache, must-revalidate"})
+
+
+@app.get("/api/push/vapid-key")
+async def push_vapid_key():
+    return {"key": settings.load().get("vapid_public_key") or ""}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(request: Request):
+    body = await request.json()
+    name = body.get("name", "")
+    if not people.get(name):   # must be a real, enrolled profile
+        return {"ok": False, "error": "unknown profile — enroll your voice first"}
+    push_subs.set_subscription(name, body.get("subscription"))
+    return {"ok": True}
+
+
+@app.get("/api/push/pending/{slug}")
+async def push_pending(slug: str):
+    owner = next((p["name"] for p in people.load() if p["space"] == slug), None)
+    if not owner:
+        return {"pending": [], "name": None}
+    # name rides along so the page (which only knows its own slug from the
+    # URL) can subscribe under the real profile name people.get() expects.
+    return {"pending": people.pending_for(owner), "name": owner}
+
+
+@app.post("/api/push/action")
+async def push_action(request: Request):
+    body = await request.json()
+    r = people.resolve(body.get("request_id"), bool(body.get("allow")))
+    return {"ok": bool(r)}
 
 
 # ─── Real-time vision (camera detection loop) ─────────────
@@ -690,14 +732,28 @@ async def ask_owner(ws, requester, owner, file_entry):
 
 async def _notify_owner(owner, message):
     """Reach the owner wherever they are. Failing to reach them must never
-    silently become a yes — the request just stays pending and expires."""
-    if not registry.has("notify.push"):
+    silently become a yes — the request just stays pending and expires.
+
+    Tries every notify.push provider directly rather than registry.call()
+    (which only ever tries ONE — score() ties every local plugin equally,
+    so with notify_webpush and notify_ntfy now sharing this capability,
+    that single pick would always land on whichever sorts first and the
+    other would never run). webpush goes first since it's addressed to
+    this specific person; ntfy is the fallback for anyone who hasn't
+    installed the phone app yet."""
+    providers = registry.providers.get("notify.push", [])
+    if not providers:
         return
-    try:
-        await registry.call("notify.push", "push",
-                            title=f"Lucy — {owner}", message=message, tag="lock")
-    except Exception as e:
-        print(f"[consent] couldn't reach {owner}: {e}")
+    providers = sorted(providers, key=lambda p: p.manifest.get("provider") != "webpush")
+    last_error = None
+    for provider in providers:
+        try:
+            await provider.call("push", title=f"Lucy — {owner}", message=message,
+                                tag="lock", to=owner)
+            return
+        except Exception as e:
+            last_error = e
+    print(f"[consent] couldn't reach {owner}: {last_error}")
 
 
 def parse_dest_choice(text):
